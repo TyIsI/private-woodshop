@@ -1,16 +1,39 @@
-#include <ESP8266WiFi.h>
-#include <MQTT.h>
-#include <Adafruit_NeoPixel.h>
-
 #include "config.h"
+
+#include <Arduino.h>
+
+#include <ESP8266WiFi.h>
+
+#include <MQTT.h>
+
+#include <NeoPixelBrightnessBus.h>
+
+#ifndef RGB_COLOR_TYPE
+#define RGB_COLOR_TYPE RgbwColor
+#endif
+
+#ifndef RGB_COLOR_FEATURE
+#define RGB_COLOR_FEATURE NeoGrbwFeature
+#endif
+
 #include "modes.h"
+
+RgbColor red(255, 0, 0);
+RgbColor orange(255, 128, 0);
+RgbColor green(0, 255, 0);
+RgbColor blue(0, 0, 255);
+RgbColor black(0);
 
 WiFiClient net;
 int wifiStatus = WL_IDLE_STATUS;
 
 MQTTClient client;
 
-Adafruit_NeoPixel led_strip = Adafruit_NeoPixel( NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800 );
+#ifdef ESP8266
+NeoPixelBrightnessBus<RGB_COLOR_FEATURE, NeoEsp8266Dma800KbpsMethod> led_strip(NUM_LEDS);
+#else
+NeoPixelBrightnessBus<RGB_COLOR_FEATURE, Neo800KbpsMethod> led_strip(NUM_LEDS, LED_PIN);
+#endif
 
 // Variables
 unsigned long lastMillis = 0;
@@ -18,109 +41,119 @@ unsigned int loop_counter = 0;
 String ops_mode = "";
 String new_ops_mode = DEFAULT_MODE;
 
-void fill_strip(int r, int g, int b ) {
-  for ( int p = 0 ; p < NUM_LEDS ; p++ ) {
-    led_strip.setPixelColor( p, r, g, b );
+void fill_strip(int r, int g, int b) {
+  for (int p = 0; p < NUM_LEDS; p++) {
+    led_strip.SetPixelColor(p, RGB_COLOR_TYPE(r, g, b));
+  }
+}
+
+void fill_strip(RGB_COLOR_TYPE color) {
+  for (int p = 0; p < NUM_LEDS; p++) {
+    led_strip.SetPixelColor(p, color);
   }
 }
 
 boolean phoneCycle = false;
 
 void doPhoneAnim() {
-  if ( loop_counter % 25 == 0 ) {
+  if (loop_counter % 25 == 0) {
     phoneCycle = !phoneCycle;
   }
 
   if (phoneCycle) {
-    fill_strip( 255, 255, 255 );
-  } else {
-    fill_strip( 0, 0, 0 );
+    fill_strip(255, 255, 255);
+  }
+  else {
+    fill_strip(black);
   }
 
-  led_strip.show();
+  led_strip.Show();
 }
 
 boolean alarmCycle = false;
 
 void doAlarmAnim() {
-  if ( loop_counter % 25 == 0 ) {
+  if (loop_counter % 25 == 0) {
     alarmCycle = !alarmCycle;
   }
 
   if (alarmCycle) {
-    fill_strip( 255, 0, 0 );
-  } else {
-    fill_strip( 0, 0, 0 );
+    fill_strip(red);
+  }
+  else {
+    fill_strip(black);
   }
 
-  led_strip.show();
+  led_strip.Show();
 }
 
 void doBlack() {
   if (loop_counter == 0)
-    fill_strip( 0, 0, 0 );
-  led_strip.show();
+    fill_strip(black);
+  led_strip.Show();
 }
 
 void doRed() {
   if (loop_counter == 0)
-    fill_strip( 255, 0, 0 );
-  led_strip.show();
+    fill_strip(red);
+  led_strip.Show();
 }
 
 void doOrange() {
   if (loop_counter == 0)
-    fill_strip( 255, 128, 0 );
-  led_strip.show();
+    fill_strip(orange);
+  led_strip.Show();
 }
 
 void doGreen() {
   if (loop_counter == 0)
-    fill_strip( 0, 255, 0 );
-  led_strip.show();
+    fill_strip(0, 255, 0);
+  led_strip.Show();
 }
 
 void doBlue() {
   if (loop_counter == 0)
-    fill_strip( 0, 0, 255 );
-  led_strip.show();
+    fill_strip(blue);
+  led_strip.Show();
 }
 
 boolean testCycle = false;
 
 void doTest() {
   int modifier = (loop_counter % 255);
-  fill_strip( modifier, modifier, modifier );
-  led_strip.show();
+  fill_strip(modifier, modifier, modifier);
+  led_strip.Show();
 }
 
 void doUnknown() {
   int modifier = (loop_counter % (255 * 2));
   if (modifier > 255) modifier = (255 - (modifier % 255));
-  fill_strip( modifier, 0, modifier );
-  led_strip.show();
+  fill_strip(modifier, 0, modifier);
+  led_strip.Show();
 }
 
 int discoPhase = 0;
 
 void doDisco() {
-  if (loop_counter % 25 != 0 )
+  if (loop_counter % 25 != 0)
     return;
 
-  if ( discoPhase == 1 ) {
+  if (discoPhase == 1) {
     discoPhase = 0;
-  } else {
+  }
+  else {
     discoPhase = 1;
   }
 
-  for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-    if ( i % 2 == discoPhase ) {
-      led_strip.setPixelColor( i, random(255), random(255), random(255) );
-    } else {
-      led_strip.setPixelColor( i, 0, 0, 0 );
+  for (int i = 0; i < NUM_LEDS; i++) {
+    if (i % 2 == discoPhase) {
+      led_strip.SetPixelColor(i, RGB_COLOR_TYPE(random(255), random(255), random(255)));
+    }
+    else {
+      led_strip.SetPixelColor(i, black);
     }
   }
-  led_strip.show();
+  led_strip.Show();
 }
 
 int knightRiderValues[NUM_LEDS];
@@ -130,7 +163,7 @@ int knightRiderDirection = 1;
 void doKnightRider(int updateInterval, int colorMode) {
   // Reset to default at the start
   if (loop_counter == 0) {
-    for (int i = 0 ; i < NUM_LEDS ; i++ ) {
+    for (int i = 0; i < NUM_LEDS; i++) {
       knightRiderValues[i] = 0;
     }
   }
@@ -139,14 +172,15 @@ void doKnightRider(int updateInterval, int colorMode) {
   if (loop_counter % updateInterval != 0) return;
 
   // Dim LEDs
-  for (int i = 0 ; i < NUM_LEDS ; i++ ) {
+  for (int i = 0; i < NUM_LEDS; i++) {
     if (knightRiderValues[i] > 0) knightRiderValues[i]--;
   }
 
   // Update position
-  if ( (knightRiderPosition + knightRiderDirection) >= NUM_LEDS ) {
+  if ((knightRiderPosition + knightRiderDirection) >= NUM_LEDS) {
     knightRiderDirection = -1;
-  } else if ((knightRiderPosition + knightRiderDirection) < 0) {
+  }
+  else if ((knightRiderPosition + knightRiderDirection) < 0) {
     knightRiderDirection = 1;
   }
 
@@ -156,28 +190,28 @@ void doKnightRider(int updateInterval, int colorMode) {
   knightRiderValues[knightRiderPosition] = 5;
 
   // Update LEDs
-  for (int p = 0 ; p < NUM_LEDS ; p++ ) {
+  for (int p = 0; p < NUM_LEDS; p++) {
     int m = (knightRiderValues[p] * 51);
-    switch(colorMode) {
-      case MODE_RED:
-      led_strip.setPixelColor( p, m, 0, 0 );
+    switch (colorMode) {
+    case MODE_RED:
+      led_strip.SetPixelColor(p, RGB_COLOR_TYPE(m, 0, 0));
       break;
-      case MODE_GREEN:
-      led_strip.setPixelColor( p, 0, m, 0 );
+    case MODE_GREEN:
+      led_strip.SetPixelColor(p, RGB_COLOR_TYPE(0, m, 0));
       break;
-      case MODE_BLUE:
-      led_strip.setPixelColor( p, 0, 0, m );
+    case MODE_BLUE:
+      led_strip.SetPixelColor(p, RGB_COLOR_TYPE(0, 0, m));
       break;
     }
-    
+
   }
-  led_strip.show();
+  led_strip.Show();
 }
 
 int connectWiFiStatus = 0;
 
 boolean connectWiFi() {
-  if ( WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.println("Wireless already connected!");
     connectWiFiStatus = 2;
     return true;
@@ -187,15 +221,15 @@ boolean connectWiFi() {
 
   Serial.println("Wifi.status() vs WL_CONNECTED: " + String(WiFi.status()) + " / " + String(WL_CONNECTED));
 
-  if ( connectWiFiStatus == 0 ) {
+  if (connectWiFiStatus == 0) {
     Serial.println("Connecting wifi...");
     WiFi.reconnect();
     delay(500);
     connectWiFiStatus = 1;
   }
 
-  if ( connectWiFiStatus == 1 ) {
-    for ( int i = 0 ; i < 5 ; i++ ) {
+  if (connectWiFiStatus == 1) {
+    for (int i = 0; i < 5; i++) {
       delay(100);
       if (WiFi.status() == WL_CONNECTED) {
         Serial.println("Wireless connected!");
@@ -221,21 +255,22 @@ boolean connectMQTT() {
 
   new_ops_mode = "spacebus";
 
-  if ( connectMQTTStatus == 2)
+  if (connectMQTTStatus == 2)
     connectMQTTStatus = 0;
 
-  if ( connectMQTTStatus < 1 ) {
+  if (connectMQTTStatus < 1) {
     Serial.println("Connecting to MQTT...");
     client.connect(HOSTNAME);
     connectMQTTStatus = 1;
   }
 
   if (connectMQTTStatus == 1) {
-    for ( int i = 0 ; i < 25 ; i++ ) {
+    for (int i = 0; i < 25; i++) {
       if (client.connected()) {
         connectMQTTStatus = 2;
         break;
-      } else {
+      }
+      else {
         Serial.println("Trying MQTT...");
       }
     }
@@ -276,57 +311,76 @@ void watchDog() {
   watchdogCounter = 0;
 }
 
-void messageReceived(String &topic, String &payload) {
+void messageReceived(String& topic, String& payload) {
   Serial.println("incoming: " + topic + " - " + payload);
 
-  if ( payload == ops_mode )
+  if (payload == ops_mode)
     return;
 
-  if ( payload == "off" ) {
+  if (payload == "off") {
     new_ops_mode = "off";
-  } else if (payload == "alarm") {
+  }
+  else if (payload == "alarm") {
     new_ops_mode = "alarm";
-  } else if (payload == "phone") {
+  }
+  else if (payload == "phone") {
     new_ops_mode = "phone";
-  } else if (payload == "red") {
+  }
+  else if (payload == "red") {
     new_ops_mode = "red";
-  } else if (payload == "orange") {
+  }
+  else if (payload == "orange") {
     new_ops_mode = "orange";
-  } else if (payload == "green") {
+  }
+  else if (payload == "green") {
     new_ops_mode = "green";
-  } else if (payload == "test") {
+  }
+  else if (payload == "test") {
     new_ops_mode = "test";
-  } else if (payload == "disco") {
+  }
+  else if (payload == "disco") {
     new_ops_mode = "disco";
-  } else {
+  }
+  else {
     new_ops_mode = "unknown";
   }
 }
 
 void doUpdate() {
-  if (ops_mode == "off" ) {
+  if (ops_mode == "off") {
     doBlack();
-  } else if (ops_mode == "alarm") {
+  }
+  else if (ops_mode == "alarm") {
     doAlarmAnim();
-  } else if (ops_mode == "phone") {
+  }
+  else if (ops_mode == "phone") {
     doPhoneAnim();
-  } else if (ops_mode == "red") {
+  }
+  else if (ops_mode == "red") {
     doRed();
-  } else if (ops_mode == "orange") {
+  }
+  else if (ops_mode == "orange") {
     doOrange();
-  } else if (ops_mode == "green") {
+  }
+  else if (ops_mode == "green") {
     doGreen();
-  } else if (ops_mode == "test") {
+  }
+  else if (ops_mode == "test") {
     doTest();
-  } else if (ops_mode == "disco") {
+  }
+  else if (ops_mode == "disco") {
     doDisco();
-  } else if (ops_mode == "network") {
+  }
+  else if (ops_mode == "network") {
     doKnightRider(12, MODE_RED);
-  } else if (ops_mode == "spacebus") {
+  }
+  else if (ops_mode == "spacebus") {
     doKnightRider(6, MODE_BLUE);
-  } else if (ops_mode == "waiting") {
+  }
+  else if (ops_mode == "waiting") {
     doKnightRider(3, MODE_GREEN);
-  } else if (ops_mode == "unknown") {
+  }
+  else if (ops_mode == "unknown") {
     doUnknown();
   }
 
@@ -344,9 +398,9 @@ void setup() {
   client.begin(MQTT_HOST, MQTT_PORT, net);
   client.onMessage(messageReceived);
 
-  led_strip.setBrightness(BRIGHTNESS);
-  led_strip.begin();
-  led_strip.show(); // Initialize all pixels to 'off'
+  led_strip.SetBrightness(BRIGHTNESS);
+  led_strip.Begin();
+  led_strip.Show(); // Initialize all pixels to 'off'
   doBlack();
 
   connectWiFi();
@@ -357,15 +411,15 @@ void loop() {
   client.loop();
   delay(10);  // <- fixes some issues with WiFi stability
 
-  if ( loop_counter % WATCHDOG_CYCLE == (int)random(1000) ) watchDog();
+  if (loop_counter % WATCHDOG_CYCLE == (unsigned int)random(1000)) watchDog();
 
-  if ( new_ops_mode != ops_mode ) {
+  if (new_ops_mode != ops_mode) {
     Serial.println("Changing mode from " + ops_mode + " to " + new_ops_mode);
     loop_counter = 0;
     ops_mode = new_ops_mode;
   }
 
-  if ( loop_counter % REPORTING_CYCLE == 0 ) Serial.println("Current mode: " + ops_mode);
+  if (loop_counter % REPORTING_CYCLE == 0) Serial.println("Current mode: " + ops_mode);
 
   doUpdate();
 }
