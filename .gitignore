@@ -1,3 +1,4 @@
 config.h
 .pio
 .vscode
+config.*.h
