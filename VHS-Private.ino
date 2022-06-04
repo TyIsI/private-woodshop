@@ -3,16 +3,12 @@
 #include <Adafruit_NeoPixel.h>
 
 #include "config.h"
+#include "modes.h"
 
 WiFiClient net;
 int wifiStatus = WL_IDLE_STATUS;
 
 MQTTClient client;
-
-
-#define NUM_LEDS 42
-#define LED_PIN 3
-#define BRIGHTNESS 255
 
 Adafruit_NeoPixel led_strip = Adafruit_NeoPixel( NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800 );
 
@@ -20,7 +16,13 @@ Adafruit_NeoPixel led_strip = Adafruit_NeoPixel( NUM_LEDS, LED_PIN, NEO_GRB + NE
 unsigned long lastMillis = 0;
 unsigned int loop_counter = 0;
 String ops_mode = "";
-String new_ops_mode = "";
+String new_ops_mode = DEFAULT_MODE;
+
+void fill_strip(int r, int g, int b ) {
+  for ( int p = 0 ; p < NUM_LEDS ; p++ ) {
+    led_strip.setPixelColor( p, r, g, b );
+  }
+}
 
 boolean phoneCycle = false;
 
@@ -30,13 +32,9 @@ void doPhoneAnim() {
   }
 
   if (phoneCycle) {
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 255, 255, 255 );
-    }
+    fill_strip( 255, 255, 255 );
   } else {
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 0, 0, 0 );
-    }
+    fill_strip( 0, 0, 0 );
   }
 
   led_strip.show();
@@ -50,13 +48,9 @@ void doAlarmAnim() {
   }
 
   if (alarmCycle) {
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 255, 0, 0 );
-    }
+    fill_strip( 255, 0, 0 );
   } else {
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 0, 0, 0 );
-    }
+    fill_strip( 0, 0, 0 );
   }
 
   led_strip.show();
@@ -64,59 +58,46 @@ void doAlarmAnim() {
 
 void doBlack() {
   if (loop_counter == 0)
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 0, 0, 0 );
-    }
+    fill_strip( 0, 0, 0 );
   led_strip.show();
 }
 
 void doRed() {
   if (loop_counter == 0)
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 255, 0, 0 );
-    }
+    fill_strip( 255, 0, 0 );
   led_strip.show();
 }
 
 void doOrange() {
   if (loop_counter == 0)
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 255, 128, 0 );
-    }
+    fill_strip( 255, 128, 0 );
   led_strip.show();
 }
 
 void doGreen() {
   if (loop_counter == 0)
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 0, 255, 0 );
-    }
+    fill_strip( 0, 255, 0 );
   led_strip.show();
 }
 
 void doBlue() {
   if (loop_counter == 0)
-    for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-      led_strip.setPixelColor( i, 0, 0, 255 );
-    }
+    fill_strip( 0, 0, 255 );
   led_strip.show();
 }
 
 boolean testCycle = false;
+
 void doTest() {
   int modifier = (loop_counter % 255);
-  for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-    led_strip.setPixelColor( i, modifier, modifier, modifier );
-  }
+  fill_strip( modifier, modifier, modifier );
   led_strip.show();
 }
 
 void doUnknown() {
-  int modifier = (loop_counter % (255*2));
-  if(modifier>255) modifier = (255-(modifier%255));
-  for ( int i = 0 ; i < NUM_LEDS ; i++ ) {
-    led_strip.setPixelColor( i, modifier, 0, modifier );
-  }
+  int modifier = (loop_counter % (255 * 2));
+  if (modifier > 255) modifier = (255 - (modifier % 255));
+  fill_strip( modifier, 0, modifier );
   led_strip.show();
 }
 
@@ -142,34 +123,157 @@ void doDisco() {
   led_strip.show();
 }
 
-void connectWiFi() {
-  if ( WiFi.status() == WL_CONNECTED)
-    return;
+int knightRiderValues[NUM_LEDS];
+int knightRiderPosition = 0;
+int knightRiderDirection = 1;
 
-  Serial.print("checking wifi...");
-  WiFi.reconnect();
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(1000);
-    wifiStatus = WiFi.status();
+void doKnightRider(int updateInterval, int colorMode) {
+  // Reset to default at the start
+  if (loop_counter == 0) {
+    for (int i = 0 ; i < NUM_LEDS ; i++ ) {
+      knightRiderValues[i] = 0;
+    }
   }
-  Serial.println("");
+
+  // Slow it down
+  if (loop_counter % updateInterval != 0) return;
+
+  // Dim LEDs
+  for (int i = 0 ; i < NUM_LEDS ; i++ ) {
+    if (knightRiderValues[i] > 0) knightRiderValues[i]--;
+  }
+
+  // Update position
+  if ( (knightRiderPosition + knightRiderDirection) >= NUM_LEDS ) {
+    knightRiderDirection = -1;
+  } else if ((knightRiderPosition + knightRiderDirection) < 0) {
+    knightRiderDirection = 1;
+  }
+
+  knightRiderPosition = knightRiderPosition + knightRiderDirection;
+
+  // Light up current position
+  knightRiderValues[knightRiderPosition] = 5;
+
+  // Update LEDs
+  for (int p = 0 ; p < NUM_LEDS ; p++ ) {
+    int m = (knightRiderValues[p] * 51);
+    switch(colorMode) {
+      case MODE_RED:
+      led_strip.setPixelColor( p, m, 0, 0 );
+      break;
+      case MODE_GREEN:
+      led_strip.setPixelColor( p, 0, m, 0 );
+      break;
+      case MODE_BLUE:
+      led_strip.setPixelColor( p, 0, 0, m );
+      break;
+    }
+    
+  }
+  led_strip.show();
 }
 
-void connectMQTT() {
-  if (client.connected())
-    return;
+int connectWiFiStatus = 0;
 
-  Serial.print("connecting to MQTT...");
-  while (!client.connect(HOSTNAME)) {
-    Serial.print(".");
-    delay(1000);
+boolean connectWiFi() {
+  if ( WiFi.status() == WL_CONNECTED) {
+    Serial.println("Wireless already connected!");
+    connectWiFiStatus = 2;
+    return true;
   }
-  Serial.println("");
 
-  Serial.println("connected!");
+  new_ops_mode = "network";
 
-  client.subscribe(MQTT_TOPIC);
+  Serial.println("Wifi.status() vs WL_CONNECTED: " + String(WiFi.status()) + " / " + String(WL_CONNECTED));
+
+  if ( connectWiFiStatus == 0 ) {
+    Serial.println("Connecting wifi...");
+    WiFi.reconnect();
+    delay(500);
+    connectWiFiStatus = 1;
+  }
+
+  if ( connectWiFiStatus == 1 ) {
+    for ( int i = 0 ; i < 5 ; i++ ) {
+      delay(100);
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("Wireless connected!");
+        connectWiFiStatus = 2;
+        return true;
+      }
+      Serial.println("Trying wifi...");
+      wifiStatus = WiFi.status();
+    }
+  }
+
+  return false;
+}
+
+int connectMQTTStatus = 0;
+
+boolean connectMQTT() {
+  if (client.connected()) {
+    Serial.println("MQTT already connected!");
+    connectMQTTStatus = 2;
+    return true;
+  }
+
+  new_ops_mode = "spacebus";
+
+  if ( connectMQTTStatus == 2)
+    connectMQTTStatus = 0;
+
+  if ( connectMQTTStatus < 1 ) {
+    Serial.println("Connecting to MQTT...");
+    client.connect(HOSTNAME);
+    connectMQTTStatus = 1;
+  }
+
+  if (connectMQTTStatus == 1) {
+    for ( int i = 0 ; i < 25 ; i++ ) {
+      if (client.connected()) {
+        connectMQTTStatus = 2;
+        break;
+      } else {
+        Serial.println("Trying MQTT...");
+      }
+    }
+  }
+
+  if (client.connected()) {
+    Serial.println("MQTT connected!");
+    client.subscribe(MQTT_TOPIC);
+    connectMQTTStatus = 2;
+    new_ops_mode = "waiting";
+    return true;
+  }
+
+  return false;
+}
+
+int watchdogCounter = 0;
+
+void watchDog() {
+  // Restart if we hit too many errors
+  if (watchdogCounter > 25)
+    ESP.restart();
+
+  // Check WiFi
+  if (connectWiFi() != true) {
+    Serial.println("Bumping watchdogCounter for WiFi connection problem");
+    watchdogCounter++;
+    return;
+  }
+
+  // Check MQTT
+  if (connectMQTT() != true) {
+    Serial.println("Bumping watchdogCounter for MQTT connection problem");
+    watchdogCounter++;
+    return;
+  }
+
+  watchdogCounter = 0;
 }
 
 void messageReceived(String &topic, String &payload) {
@@ -199,53 +303,7 @@ void messageReceived(String &topic, String &payload) {
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-
-  WiFi.hostname(HOSTNAME);
-  wifiStatus = WiFi.begin(WIFI_SSID, WIFI_PASS);
-  WiFi.setAutoConnect(true);
-  WiFi.setAutoReconnect(true);
-
-  client.begin(MQTT_HOST, MQTT_PORT, net);
-  client.onMessage(messageReceived);
-
-  connectWiFi();
-  connectMQTT();
-
-  led_strip.setBrightness(BRIGHTNESS);
-  led_strip.begin();
-  led_strip.show(); // Initialize all pixels to 'off'
-  doUnknown();
-}
-
-int failCounter = 0;
-
-void loop() {
-  client.loop();
-  delay(10);  // <- fixes some issues with WiFi stability
-
-  if (!WiFi.isConnected()) {
-    connectWiFi();
-    Serial.println("Bumping failCounter for WiFi connection problem");
-    failCounter++;
-  } else if (!client.connected()) {
-    connectMQTT();
-    Serial.println("Bumping failCounter for MQTT connection problem");
-    failCounter++;
-  } else {
-    if(failCounter>0)
-      failCounter--;
-  }
-
-  if (failCounter > 5)
-    ESP.restart();
-
-  if ( new_ops_mode != ops_mode ) {
-    loop_counter = 0;
-    ops_mode = new_ops_mode;
-  }
-
+void doUpdate() {
   if (ops_mode == "off" ) {
     doBlack();
   } else if (ops_mode == "alarm") {
@@ -262,9 +320,52 @@ void loop() {
     doTest();
   } else if (ops_mode == "disco") {
     doDisco();
+  } else if (ops_mode == "network") {
+    doKnightRider(12, MODE_RED);
+  } else if (ops_mode == "spacebus") {
+    doKnightRider(6, MODE_BLUE);
+  } else if (ops_mode == "waiting") {
+    doKnightRider(3, MODE_GREEN);
   } else if (ops_mode == "unknown") {
     doUnknown();
   }
 
   loop_counter++;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.hostname(HOSTNAME);
+  wifiStatus = WiFi.begin(WIFI_SSID, WIFI_PASS);
+  //  WiFi.setAutoConnect(true);
+  //  WiFi.setAutoReconnect(true);
+
+  client.begin(MQTT_HOST, MQTT_PORT, net);
+  client.onMessage(messageReceived);
+
+  led_strip.setBrightness(BRIGHTNESS);
+  led_strip.begin();
+  led_strip.show(); // Initialize all pixels to 'off'
+  doBlack();
+
+  connectWiFi();
+  //  connectMQTT();
+}
+
+void loop() {
+  client.loop();
+  delay(10);  // <- fixes some issues with WiFi stability
+
+  if ( loop_counter % WATCHDOG_CYCLE == (int)random(1000) ) watchDog();
+
+  if ( new_ops_mode != ops_mode ) {
+    Serial.println("Changing mode from " + ops_mode + " to " + new_ops_mode);
+    loop_counter = 0;
+    ops_mode = new_ops_mode;
+  }
+
+  if ( loop_counter % REPORTING_CYCLE == 0 ) Serial.println("Current mode: " + ops_mode);
+
+  doUpdate();
 }
